@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lano Capital</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Geist:wght@400;500;600;700&family=Mrs+Saint+Delafield&display=swap" rel="stylesheet">
+<script>
+  /* ============ CONFIG ============ */
+  const WALLET = "0x1B52d87145bB1cc865cc230Fcb6C073C010a5c7f";
+  const LIVE_REFRESH_MS = 30_000;   // positions + account value
+  const FULL_REFRESH_MS = 300_000;  // fills + funding history
+</script>
+<style>
+:root {
+  --bg: #DFE7E1; --paper: #EEF3EE; --surface: #F7FAF7; --ink: #13322A; --muted: #56706A;
+  --line: #C3D1C7; --up: #1C7A4C; --down: #B3392D; --gold: #A9853A; --accent: #1C5B8F; --empty: #E7EEE9;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0C1A16; --paper: #11241E; --surface: #132A23; --ink: #E2ECE5; --muted: #8DA69D;
+    --line: #23413A; --up: #46C38A; --down: #F06A5C; --gold: #D6B266; --accent: #86B8E8; --empty: #0F211B;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0C1A16; --paper: #11241E; --surface: #132A23; --ink: #E2ECE5; --muted: #8DA69D;
+  --line: #23413A; --up: #46C38A; --down: #F06A5C; --gold: #D6B266; --accent: #86B8E8; --empty: #0F211B;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 18px 16px 40px; }
+.up { color: var(--up); } .down { color: var(--down); } .muted { color: var(--muted); }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.serif { font-family: "Cormorant Garamond", Georgia, "Times New Roman", serif; font-variant-numeric: lining-nums tabular-nums; }
+
+/* Top bar */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 16px; }
+.greet { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 600; margin: 0; line-height: 1.1; }
+.top .spacer { flex: 1; }
+.sync { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--up); }
+.dot.busy { background: var(--gold); animation: pulse 1s infinite; }
+.dot.err { background: var(--down); }
+@keyframes pulse { 50% { opacity: .3; } }
+.btn { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; font-size: 13px; }
+.btn:hover { border-color: var(--gold); }
+.btn:disabled { opacity: .4; cursor: default; }
+
+/* ---------- The banknote ---------- */
+.note {
+  position: relative; overflow: hidden; border-radius: 6px;
+  background:
+    radial-gradient(120% 140% at 15% 40%, color-mix(in oklab, var(--gold) 12%, transparent), transparent 60%),
+    radial-gradient(90% 120% at 90% 60%, color-mix(in oklab, var(--up) 14%, transparent), transparent 65%),
+    var(--paper);
+  border: 1px solid color-mix(in oklab, var(--gold) 60%, var(--line));
+  padding: 10px;
+}
+.note-inner {
+  position: relative; z-index: 1;
+  border: 1.5px solid color-mix(in oklab, var(--gold) 70%, transparent);
+  outline: 1px solid color-mix(in oklab, var(--gold) 45%, transparent); outline-offset: -6px;
+  border-radius: 3px; padding: 22px 26px 18px;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 8px 28px; align-items: center;
+}
+.waves { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.seal { width: 118px; height: 118px; padding: 0; border: 0; background: none; border-radius: 50%; grid-row: span 2; position: relative; }
+.seal svg { width: 100%; height: 100%; display: block; transition: transform .8s cubic-bezier(.2,.8,.2,1); }
+.seal.spin svg { transform: rotate(360deg); }
+.house { margin: 0; font-size: clamp(30px, 5vw, 50px); font-weight: 700; line-height: .95; letter-spacing: .01em; }
+.house small { display: block; font-size: 15px; font-weight: 500; letter-spacing: .02em; color: var(--muted); margin-top: 6px; }
+.denom { text-align: right; grid-row: span 2; }
+.denom .amt { font-size: clamp(38px, 7vw, 68px); font-weight: 700; line-height: .9; letter-spacing: -0.01em; }
+.denom .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.note-foot { grid-column: 2; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 22px; font-size: 12px; color: var(--muted); }
+.serial { font-family: "Cormorant Garamond", Georgia, serif; font-size: 16px; font-weight: 600; letter-spacing: .12em; color: var(--down); }
+.sig { display: flex; flex-direction: column; }
+.sig .name { font-family: "Mrs Saint Delafield", cursive; font-size: 40px; line-height: .8; color: var(--ink); }
+.sig .role { border-top: 1px solid var(--muted); padding-top: 2px; }
+
+/* Stats */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin: 16px 0; }
+.stat { border-top: 2px solid var(--ink); padding: 10px 2px 0; }
+.stat .k { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.stat .val { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
+.heater { font-size: 12px; background: color-mix(in oklab, var(--gold) 22%, transparent); color: var(--ink); border-radius: 999px; padding: 0 8px; }
+
+/* Panels */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+.panel h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 24px; font-weight: 700; margin: 0 0 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; line-height: 1.1; }
+.panel h2 .muted { font-family: "Geist", system-ui, sans-serif; font-weight: 400; font-size: 13px; }
+.cols { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }
+.cols > * { min-width: 0; }
+
+/* Calendar */
+.cal-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 12px; }
+.cal-head h2 { margin: 0; }
+.month-net { font-size: 22px; font-weight: 650; }
+.month-nav { margin-left: auto; display: flex; gap: 6px; }
+.month-nav .btn { width: 34px; padding: 4px 0; }
+.dow, .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.dow div { font-size: 12px; color: var(--muted); padding: 0 6px 4px; }
+.day { min-height: 76px; border-radius: 6px; padding: 6px 8px; background: var(--empty); display: flex; flex-direction: column; justify-content: space-between; border: 1px solid transparent; text-align: left; position: relative; }
+.day.blank { background: transparent; }
+.day .n { font-size: 12px; color: var(--muted); }
+.day.hot .n, .day.hot .t { color: inherit; opacity: .8; }
+.day .v { font-size: 15px; font-weight: 600; line-height: 1.2; }
+.day .t { font-size: 11px; color: var(--muted); }
+.day.today { border-color: var(--ink); }
+.day.sel { outline: 2px solid var(--gold); outline-offset: 1px; }
+.day.future { opacity: .4; }
+.crown { position: absolute; top: 2px; right: 5px; font-size: 14px; }
+
+/* Chart */
+.chart { width: 100%; height: 200px; display: block; }
+.chart-tip { font-size: 13px; color: var(--muted); min-height: 20px; }
+
+/* Tables */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; }
+.empty-row { color: var(--muted); padding: 16px 8px; }
+tr.danger td { background: color-mix(in oklab, var(--down) 10%, transparent); }
+.please { display: inline-block; margin-left: 6px; font-size: 11px; color: #fff; background: var(--down); border-radius: 999px; padding: 0 7px; }
+
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; font-size: 14px; }
+.kv .k { color: var(--muted); }
+.kv .v { text-align: right; font-weight: 500; }
+
+.banner { border: 1px solid var(--down); background: var(--surface); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; font-size: 14px; }
+.banner.info { border-color: var(--gold); }
+.banner code { background: var(--empty); padding: 1px 5px; border-radius: 4px; }
+
+footer { text-align: center; font-size: 12px; color: var(--muted); padding-top: 12px; }
+footer .serif { font-size: 15px; }
+
+/* Easter egg bits */
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 999px; font-size: 14px; transition: .3s; z-index: 50; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+.toast.show { transform: translate(-50%, 0); opacity: 1; }
+.bill { position: fixed; top: -60px; font-size: 34px; z-index: 40; pointer-events: none; animation: fall linear forwards; }
+@keyframes fall { to { transform: translateY(calc(100vh + 120px)) rotate(var(--r)); } }
+dialog { border: 1px solid var(--gold); border-radius: 8px; background: var(--paper); color: var(--ink); max-width: 420px; width: calc(100% - 32px); padding: 22px 24px; }
+dialog::backdrop { background: rgba(5, 15, 12, .55); }
+dialog h3 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 26px; margin: 0 0 4px; }
+dialog .stamp { display: inline-block; border: 2px solid var(--down); color: var(--down); font-weight: 700; padding: 0 8px; transform: rotate(-4deg); font-size: 12px; letter-spacing: .1em; margin-bottom: 12px; }
+dialog ul { padding-left: 18px; margin: 8px 0 16px; }
+[hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.busy { animation: none; }
+  .seal svg { transition: none; }
+  .bill { display: none; }
+}
+@media (max-width: 760px) {
+  .cols { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .note-inner { grid-template-columns: auto 1fr; padding: 16px; gap: 10px 16px; }
+  .seal { width: 76px; height: 76px; grid-row: auto; }
+  .denom { grid-column: 1 / -1; grid-row: auto; text-align: left; }
+  .note-foot { grid-column: 1 / -1; }
+  .day { min-height: 54px; padding: 4px 5px; }
+  .day .v { font-size: 11px; letter-spacing: -0.02em; }
+  .hide-sm { display: none; }
+  .day .t { display: none; }
+  .dow, .grid { gap: 3px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <p class="greet" id="greet">Hello, Lano.</p>
+    <span class="spacer"></span>
+    <span class="sync"><span class="dot" id="dot"></span><span id="syncText">Not synced</span></span>
+    <button class="btn" id="refresh" type="button">Refresh</button>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <!-- The banknote -->
+  <section class="note" aria-label="Account summary">
+    <svg class="waves" id="waves" preserveAspectRatio="none" aria-hidden="true"></svg>
+    <div class="note-inner">
+      <button class="seal" id="seal" type="button" aria-label="Lano Capital seal"><svg id="sealSvg" viewBox="-60 -60 120 120"></svg></button>
+      <h1 class="house serif">Lano Capital<small>Statement of account, payable to the bearer on demand</small></h1>
+      <div class="denom">
+        <div class="amt serif" id="denom">$–</div>
+        <div class="sub" id="denomSub">Account value</div>
+      </div>
+      <div class="note-foot">
+        <span class="serial" id="serial">LC 000000</span>
+        <span class="sig"><span class="name">Lano</span><span class="role">Chief Executive Degen</span></span>
+        <span id="wallet"></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats" aria-label="Summary">
+    <div class="stat"><div class="k">Today <span id="heater"></span></div><div class="val" id="sToday">–</div></div>
+    <div class="stat"><div class="k">Last 7 days</div><div class="val" id="sWeek">–</div></div>
+    <div class="stat"><div class="k">Last 30 days</div><div class="val" id="sMonth">–</div></div>
+    <div class="stat"><div class="k">All time</div><div class="val" id="sAll">–</div></div>
+  </section>
+
+  <section class="panel" aria-label="Daily PnL calendar">
+    <div class="cal-head">
+      <h2 id="monthTitle"></h2>
+      <span class="month-net" id="monthNet"></span>
+      <div class="month-nav">
+        <button class="btn" id="prev" type="button" aria-label="Previous month">‹</button>
+        <button class="btn" id="next" type="button" aria-label="Next month">›</button>
+      </div>
+    </div>
+    <div class="dow"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <div class="cols">
+    <div>
+      <section class="panel">
+        <h2>The climb <span class="muted">cumulative, net of fees and funding</span></h2>
+        <svg class="chart" id="chart" viewBox="0 0 600 200" preserveAspectRatio="none" role="img" aria-label="Cumulative PnL chart"></svg>
+        <div class="chart-tip" id="chartTip"></div>
+      </section>
+      <section class="panel">
+        <h2>On the table <span class="muted" id="uPnl"></span></h2>
+        <div class="scroll"><table>
+          <thead><tr><th>Coin</th><th>Side</th><th class="r">Size</th><th class="r">Entry</th><th class="r">Lev</th><th class="r">Liq.</th><th class="r">Unrealised</th></tr></thead>
+          <tbody id="positions"></tbody>
+        </table></div>
+      </section>
+    </div>
+    <section class="panel">
+      <h2>The books <span class="muted" id="rangeLabel">all synced history</span></h2>
+      <div class="kv" id="breakdown"></div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Closed trades <span class="muted" id="tradesLabel">most recent</span>
+      <button class="btn" id="clearDay" type="button" hidden style="margin-left:auto">Show all</button></h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Time</th><th>Coin</th><th>Action</th><th class="r hide-sm">Size</th><th class="r hide-sm">Price</th><th class="r hide-sm">Fee</th><th class="r">PnL</th></tr></thead>
+      <tbody id="trades"></tbody>
+    </table></div>
+    <button class="btn" id="moreTrades" type="button" style="margin-top:10px">Show more</button>
+  </section>
+
+  <footer>
+    <div class="serif">Lano Capital, est. 2026</div>
+    <div>Not a real fund. Past performance is, unfortunately, past performance.</div>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<dialog id="vault">
+  <div class="stamp">CLASSIFIED</div>
+  <h3>Internal memo</h3>
+  <p class="muted" style="margin:0">For the eyes of the CED only.</p>
+  <ul id="memo"></ul>
+  <button class="btn" id="vaultClose" type="button">Close the vault</button>
+</dialog>
+
+<script>
+(() => {
+  const API = "https://api.hyperliquid.xyz/info";
+  const params = new URLSearchParams(location.search);
+  const DEMO = params.has("demo");
+  const ADDRESS = (params.get("address") || WALLET || "").trim();
+
+  const $ = id => document.getElementById(id);
+  const state = {
+    fills: [], funding: [], positions: [], accountValue: null, unrealised: 0,
+    portfolioAllTime: null, days: new Map(),
+    viewMonth: startOfMonth(new Date()), selectedDay: null, lastSync: null, showAllTrades: false,
+  };
+
+  // ---------- formatting ----------
+  function money(v, compact = false) {
+    if (v == null || isNaN(v)) return "–";
+    const sign = v > 0.004 ? "+" : v < -0.004 ? "−" : "";
+    const a = Math.abs(v);
+    let s;
+    if (compact && a >= 1000) s = (a / 1000).toFixed(a >= 10000 ? 0 : 1) + "k";
+    else if (compact && a >= 100) s = a.toFixed(0);
+    else s = a.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${sign}$${s}`;
+  }
+  const cls = v => v > 0.004 ? "up" : v < -0.004 ? "down" : "muted";
+  const num = x => { const n = parseFloat(x); return isNaN(n) ? 0 : n; };
+  const dayKey = t => new Date(t).toLocaleDateString("en-CA");
+  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  const px = v => { const n = num(v); return n >= 100 ? n.toFixed(2) : n >= 1 ? n.toFixed(4) : n.toPrecision(4); };
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const narrow = matchMedia("(max-width: 760px)");
+  function cellMoney(v) {
+    if (!narrow.matches) return money(v, true);
+    const a = Math.abs(v), s = v > 0 ? "+" : "−";
+    return s + (a >= 1000 ? (a / 1000).toFixed(1) + "k" : a >= 10 ? Math.round(a) : a.toFixed(1));
+  }
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- API ----------
+  async function info(body) {
+    const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`Hyperliquid returned ${r.status}`);
+    return r.json();
+  }
+  async function paged(type, idOf) {
+    const out = new Map(); let start = 0;
+    for (let i = 0; i < 60; i++) {
+      const batch = await info({ type, user: ADDRESS, startTime: start, endTime: Date.now() });
+      if (!Array.isArray(batch) || !batch.length) break;
+      let added = 0;
+      for (const row of batch) { const id = idOf(row); if (!out.has(id)) { out.set(id, row); added++; } }
+      if (!added) break;
+      start = Math.max(...batch.map(r => r.time));
+    }
+    return [...out.values()].sort((a, b) => a.time - b.time);
+  }
+  async function loadHistory() {
+    const [fills, funding, portfolio] = await Promise.all([
+      paged("userFillsByTime", f => `${f.tid}-${f.hash}`),
+      paged("userFunding", f => `${f.hash}-${f.time}-${f.delta?.coin}`),
+      info({ type: "portfolio", user: ADDRESS }).catch(() => null),
+    ]);
+    state.fills = fills; state.funding = funding;
+    state.portfolioAllTime = parsePortfolio(portfolio);
+  }
+  function parsePortfolio(p) {
+    if (!Array.isArray(p)) return null;
+    const entry = p.find(e => Array.isArray(e) && e[0] === "perpAllTime") || p.find(e => Array.isArray(e) && e[0] === "allTime");
+    const hist = entry?.[1]?.pnlHistory;
+    return Array.isArray(hist) && hist.length ? num(hist[hist.length - 1][1]) : null;
+  }
+  async function loadLive() {
+    const ch = await info({ type: "clearinghouseState", user: ADDRESS });
+    state.accountValue = num(ch?.marginSummary?.accountValue);
+    state.positions = (ch?.assetPositions || []).map(a => a.position).filter(p => num(p.szi) !== 0);
+    state.unrealised = state.positions.reduce((s, p) => s + num(p.unrealizedPnl), 0);
+  }
+
+  // ---------- aggregation ----------
+  function aggregate() {
+    const days = new Map();
+    const get = k => days.get(k) || days.set(k, { realised: 0, fees: 0, funding: 0, net: 0, closes: 0, wins: 0, losses: 0 }).get(k);
+    for (const f of state.fills) {
+      const d = get(dayKey(f.time)), pnl = num(f.closedPnl);
+      d.realised += pnl; d.fees += num(f.fee);
+      if (pnl !== 0) { d.closes++; pnl > 0 ? d.wins++ : d.losses++; }
+    }
+    for (const f of state.funding) get(dayKey(f.time)).funding += num(f.delta?.usdc);
+    for (const d of days.values()) d.net = d.realised - d.fees + d.funding;
+    state.days = days;
+  }
+  function sumSince(daysBack) {
+    const c = new Date(); c.setHours(0, 0, 0, 0); c.setDate(c.getDate() - (daysBack - 1));
+    const ck = dayKey(c); let s = 0;
+    for (const [k, d] of state.days) if (k >= ck) s += d.net;
+    return s;
+  }
+  function bestWorst() {
+    const e = [...state.days.entries()].filter(([, d]) => Math.abs(d.net) > 0.004).sort((a, b) => a[1].net - b[1].net);
+    return { best: e.length && e[e.length - 1][1].net > 0 ? e[e.length - 1][0] : null, worst: e.length && e[0][1].net < 0 ? e[0][0] : null };
+  }
+  // Consecutive green trading days, counting back from the most recent day with activity.
+  function greenStreak() {
+    const keys = [...state.days.keys()].filter(k => Math.abs(state.days.get(k).net) > 0.004).sort().reverse();
+    let n = 0; for (const k of keys) { if (state.days.get(k).net > 0) n++; else break; }
+    return n;
+  }
+
+  // ---------- render ----------
+  function render() {
+    renderNote(); renderGreeting(); renderCalendar(); renderStats(); renderChart(); renderPositions(); renderBreakdown(); renderTrades();
+  }
+
+  function renderNote() {
+    $("denom").textContent = state.accountValue != null
+      ? "$" + state.accountValue.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "$–";
+    $("denomSub").innerHTML = state.positions.length
+      ? `Account value, <span class="${cls(state.unrealised)}">${money(state.unrealised)}</span> floating` : "Account value";
+  }
+
+  function renderGreeting() {
+    const h = new Date().getHours();
+    const today = state.days.get(dayKey(Date.now()))?.net ?? 0;
+    let g;
+    if (h >= 1 && h < 5) g = "Go to bed, Lano. The charts will still be here.";
+    else if (today >= 100) g = "Lano's cooking today.";
+    else if (today <= -100) g = "Rough one, Lano. Tomorrow's a new candle.";
+    else g = `${h < 12 ? "Morning" : h < 18 ? "Afternoon" : "Evening"}, Lano.`;
+    $("greet").textContent = g;
+  }
+
+  function renderCalendar() {
+    const m = state.viewMonth, y = m.getFullYear(), mo = m.getMonth();
+    $("monthTitle").textContent = m.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    const daysIn = new Date(y, mo + 1, 0).getDate(), lead = (new Date(y, mo, 1).getDay() + 6) % 7;
+    const todayK = dayKey(Date.now()), { best, worst } = bestWorst();
+    let monthNet = 0, maxAbs = 0;
+    for (let i = 1; i <= daysIn; i++) {
+      const d = state.days.get(dayKey(new Date(y, mo, i)));
+      if (d) { monthNet += d.net; maxAbs = Math.max(maxAbs, Math.abs(d.net)); }
+    }
+    const mn = $("monthNet"); mn.textContent = money(monthNet); mn.className = "month-net " + cls(monthNet);
+
+    const cells = [];
+    for (let i = 0; i < lead; i++) cells.push(`<div class="day blank" aria-hidden="true"></div>`);
+    for (let i = 1; i <= daysIn; i++) {
+      const k = dayKey(new Date(y, mo, i)), d = state.days.get(k);
+      let style = "", inner = `<span class="n">${i}</span>`, hot = false, title = "";
+      if (d && Math.abs(d.net) > 0.004) {
+        const pct = Math.round(18 + 62 * Math.sqrt(Math.abs(d.net) / (maxAbs || 1)));
+        hot = pct > 50;
+        style = `background: color-mix(in oklab, var(${d.net > 0 ? "--up" : "--down"}) ${pct}%, var(--surface)); ${hot ? "color:#fff;" : ""}`;
+        inner += `<span><span class="v">${cellMoney(d.net)}</span><br><span class="t">${d.closes} closed</span></span>`;
+      }
+      if (k === best) { inner += `<span class="crown" aria-hidden="true">👑</span>`; title = "Personal best. Frame this one."; }
+      if (k === worst) title = "We don't talk about this day.";
+      const c = ["day", hot ? "hot" : "", k === todayK ? "today" : "", k > todayK ? "future" : "", state.selectedDay === k ? "sel" : ""].join(" ");
+      cells.push(d
+        ? `<button type="button" class="${c}" data-k="${k}" style="${style}" title="${title}" aria-label="${k}: ${money(d.net)}">${inner}</button>`
+        : `<div class="${c}">${inner}</div>`);
+    }
+    $("grid").innerHTML = cells.join("");
+    $("next").disabled = state.viewMonth >= startOfMonth(new Date());
+  }
+
+  function setStat(id, v) { const el = $(id); el.textContent = money(v); el.className = "val " + cls(v); }
+  function renderStats() {
+    setStat("sToday", state.days.get(dayKey(Date.now()))?.net ?? 0);
+    setStat("sWeek", sumSince(7));
+    setStat("sMonth", sumSince(30));
+    let all = 0; for (const d of state.days.values()) all += d.net;
+    setStat("sAll", state.portfolioAllTime ?? all);
+    const s = greenStreak();
+    $("heater").innerHTML = s >= 3 ? `<span class="heater">🔥 ${s}-day heater</span>` : "";
+  }
+
+  function renderChart() {
+    const svg = $("chart"), keys = [...state.days.keys()].sort();
+    if (keys.length < 2) { svg.innerHTML = `<text x="300" y="104" text-anchor="middle" fill="var(--muted)" font-size="13">Not enough history yet</text>`; $("chartTip").textContent = ""; return; }
+    let run = 0; const pts = keys.map(k => (run += state.days.get(k).net, { k, v: run }));
+    const W = 600, H = 200, P = 8;
+    const lo = Math.min(0, ...pts.map(p => p.v)), hi = Math.max(0, ...pts.map(p => p.v));
+    const sx = i => P + (i / (pts.length - 1)) * (W - 2 * P);
+    const sy = v => H - P - ((v - lo) / ((hi - lo) || 1)) * (H - 2 * P);
+    const line = pts.map((p, i) => `${sx(i).toFixed(1)},${sy(p.v).toFixed(1)}`).join(" ");
+    const col = run >= 0 ? "var(--up)" : "var(--down)";
+    svg.innerHTML = `
+      <line x1="${P}" x2="${W - P}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--line)" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
+      <polygon points="${sx(0)},${sy(0)} ${line} ${sx(pts.length - 1)},${sy(0)}" fill="${col}" opacity=".12"/>
+      <polyline points="${line}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+      <line id="hoverLine" y1="0" y2="${H}" stroke="var(--gold)" vector-effect="non-scaling-stroke" opacity="0"/>`;
+    const tip = $("chartTip"), rest = `${keys[0]} to ${keys[keys.length - 1]}`;
+    tip.textContent = rest;
+    svg.onmousemove = e => {
+      const r = svg.getBoundingClientRect();
+      const i = Math.max(0, Math.min(pts.length - 1, Math.round(((e.clientX - r.left) / r.width * W - P) / (W - 2 * P) * (pts.length - 1))));
+      const hl = svg.querySelector("#hoverLine"); hl.setAttribute("x1", sx(i)); hl.setAttribute("x2", sx(i)); hl.setAttribute("opacity", ".8");
+      const dn = state.days.get(pts[i].k).net;
+      tip.innerHTML = `${pts[i].k}: <span class="${cls(pts[i].v)}">${money(pts[i].v)}</span> cumulative, <span class="${cls(dn)}">${money(dn)}</span> that day`;
+    };
+    svg.onmouseleave = () => { svg.querySelector("#hoverLine")?.setAttribute("opacity", "0"); tip.textContent = rest; };
+  }
+
+  // Flags any position whose mark price is within 10% of liquidation.
+  function liqDistance(p) {
+    const sz = Math.abs(num(p.szi)), liq = num(p.liquidationPx);
+    if (!sz || !liq) return null;
+    const mark = num(p.positionValue) / sz;
+    return mark ? Math.abs(mark - liq) / mark : null;
+  }
+  function renderPositions() {
+    $("uPnl").innerHTML = state.positions.length ? `<span class="${cls(state.unrealised)}">${money(state.unrealised)}</span> unrealised` : "";
+    $("positions").innerHTML = state.positions.length ? state.positions.map(p => {
+      const sz = num(p.szi), up = num(p.unrealizedPnl), dist = liqDistance(p), danger = dist != null && dist < 0.10;
+      return `<tr class="${danger ? "danger" : ""}"><td>${esc(p.coin)}${danger ? `<span class="please" title="${(dist * 100).toFixed(1)}% from liquidation">Lano. Lano please.</span>` : ""}</td>
+        <td class="${sz > 0 ? "up" : "down"}">${sz > 0 ? "Long" : "Short"}</td>
+        <td class="r">${Math.abs(sz)}</td><td class="r">${px(p.entryPx)}</td><td class="r">${p.leverage?.value ?? "–"}x</td>
+        <td class="r">${p.liquidationPx ? px(p.liquidationPx) : "–"}</td><td class="r ${cls(up)}">${money(up)}</td></tr>`;
+    }).join("") : `<tr><td colspan="7" class="empty-row">Flat. Cash is a position too.</td></tr>`;
+  }
+
+  function renderBreakdown() {
+    const sel = state.selectedDay;
+    const days = sel ? [state.days.get(sel)].filter(Boolean) : [...state.days.values()];
+    const t = days.reduce((a, d) => ({ r: a.r + d.realised, f: a.f + d.fees, fu: a.fu + d.funding, n: a.n + d.net, w: a.w + d.wins, l: a.l + d.losses }), { r: 0, f: 0, fu: 0, n: 0, w: 0, l: 0 });
+    const traded = [...state.days.values()].filter(d => d.closes > 0), green = traded.filter(d => d.net > 0).length;
+    const { best, worst } = bestWorst();
+    const winRate = t.w + t.l ? Math.round(100 * t.w / (t.w + t.l)) + "%" : "–";
+    $("rangeLabel").textContent = sel ? new Date(sel + "T12:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) : "all synced history";
+    const row = (k, v, c = "") => `<div class="k">${k}</div><div class="v ${c}">${v}</div>`;
+    let html =
+      row("Realised PnL", money(t.r), cls(t.r)) +
+      row("Trading fees", money(-t.f), cls(-t.f)) +
+      row("Funding", money(t.fu), cls(t.fu)) +
+      row("Net", money(t.n), cls(t.n)) +
+      row("Win rate (closes)", `${winRate} <span class="muted">(${t.w}W / ${t.l}L)</span>`);
+    if (!sel && traded.length) {
+      html += row("Green days", `${green} of ${traded.length}`);
+      if (best) html += row("Best day 👑", `${money(state.days.get(best).net)} <span class="muted">${best.slice(5)}</span>`, "up");
+      if (worst) html += row("Worst day", `${money(state.days.get(worst).net)} <span class="muted">${worst.slice(5)}</span>`, "down");
+    }
+    $("breakdown").innerHTML = html;
+  }
+
+  function renderTrades() {
+    const sel = state.selectedDay;
+    let rows = sel ? state.fills.filter(f => dayKey(f.time) === sel) : state.fills.filter(f => num(f.closedPnl) !== 0);
+    const total = rows.length, limit = sel || state.showAllTrades ? 50 : 12;
+    rows = rows.slice(-limit).reverse();
+    $("tradesLabel").textContent = sel ? `fills on ${sel}` : `most recent ${rows.length} closes`;
+    $("moreTrades").hidden = !!sel || total <= 12;
+    $("moreTrades").textContent = state.showAllTrades ? "Show fewer" : "Show more";
+    $("clearDay").hidden = !sel;
+    $("trades").innerHTML = rows.length ? rows.map(f => {
+      const pnl = num(f.closedPnl);
+      const t = new Date(f.time).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+      return `<tr><td>${t}</td><td>${esc(f.coin)}</td><td>${esc(f.dir || (f.side === "B" ? "Buy" : "Sell"))}</td>
+        <td class="r hide-sm">${esc(f.sz)}</td><td class="r hide-sm">${px(f.px)}</td><td class="r muted hide-sm">${money(-num(f.fee))}</td>
+        <td class="r ${cls(pnl)}">${pnl ? money(pnl) : "–"}</td></tr>`;
+    }).join("") : `<tr><td colspan="7" class="empty-row">No closed trades in this range.</td></tr>`;
+  }
+
+  // ---------- banknote artwork ----------
+  function drawWaves() {
+    const svg = $("waves"), W = 1000, H = 300;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    let d = "";
+    for (let i = 0; i < 22; i++) {
+      let p = "";
+      for (let x = 0; x <= W; x += 8) {
+        const y = H * 0.55 + 70 * Math.sin(x / 95 + i * 0.28) * Math.sin(x / 310 + 1.3) + (i - 11) * 3.2;
+        p += (x ? "L" : "M") + x + "," + y.toFixed(1);
+      }
+      d += `<path d="${p}"/>`;
+    }
+    svg.innerHTML = `<g fill="none" stroke="var(--gold)" stroke-width="0.7" opacity=".38">${d}</g>`;
+  }
+  function drawSeal() {
+    // Hypotrochoid rosette, the engraved-ring look on real notes.
+    const ring = (R, r, dd, s) => {
+      let p = "";
+      for (let t = 0; t <= Math.PI * 2 * r + 0.01; t += 0.04) {
+        const x = (R - r) * Math.cos(t) + dd * Math.cos(((R - r) / r) * t);
+        const y = (R - r) * Math.sin(t) - dd * Math.sin(((R - r) / r) * t);
+        p += (t ? "L" : "M") + (x * s).toFixed(2) + "," + (y * s).toFixed(2);
+      }
+      return p;
+    };
+    $("sealSvg").innerHTML = `
+      <circle r="58" fill="var(--paper)" stroke="var(--gold)" stroke-width="1.5"/>
+      <path d="${ring(11, 7, 9, 4.2)}" fill="none" stroke="var(--gold)" stroke-width=".6"/>
+      <path d="${ring(13, 5, 6, 3.2)}" fill="none" stroke="var(--up)" stroke-width=".5" opacity=".7"/>
+      <circle r="22" fill="var(--paper)" stroke="var(--gold)" stroke-width="1"/>
+      <text y="11" text-anchor="middle" font-family="Cormorant Garamond, Georgia, serif" font-weight="700" font-size="34" fill="var(--ink)">L</text>`;
+  }
+
+  // ---------- easter eggs ----------
+  let toastTimer;
+  function toast(msg, ms = 3200) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), ms);
+  }
+  function spinSeal() { const s = $("seal"); s.classList.remove("spin"); void s.offsetWidth; s.classList.add("spin"); setTimeout(() => s.classList.remove("spin"), 900); }
+  function makeItRain() {
+    if (reducedMotion) return;
+    for (let i = 0; i < 40; i++) {
+      const b = document.createElement("span");
+      b.className = "bill"; b.textContent = ["💵", "💸", "🤑"][i % 3];
+      b.style.left = Math.random() * 100 + "vw";
+      b.style.setProperty("--r", (Math.random() * 720 - 360) + "deg");
+      b.style.animationDuration = 2.2 + Math.random() * 2 + "s";
+      b.style.animationDelay = Math.random() * 1.2 + "s";
+      document.body.appendChild(b);
+      setTimeout(() => b.remove(), 5000);
+    }
+  }
+
+  // 1. Tap the seal 7 times: the vault opens.
+  let taps = 0, tapTimer;
+  $("seal").onclick = () => {
+    spinSeal(); taps++; clearTimeout(tapTimer); tapTimer = setTimeout(() => taps = 0, 1500);
+    if (taps === 3) toast("Keep going…", 1200);
+    if (taps >= 7) { taps = 0; openVault(); }
+  };
+  function openVault() {
+    const closes = state.fills.filter(f => num(f.closedPnl) !== 0).length;
+    const coins = {}; state.fills.forEach(f => coins[f.coin] = (coins[f.coin] || 0) + 1);
+    const fav = Object.entries(coins).sort((a, b) => b[1] - a[1])[0];
+    const maxLev = Math.max(0, ...state.positions.map(p => num(p.leverage?.value)));
+    const items = [
+      `Trades closed under Lano's watch: ${closes}`,
+      fav ? `Favourite coin: ${esc(fav[0])} (${fav[1]} fills). Seek help.` : `Favourite coin: still deciding`,
+      `Fees paid to Hyperliquid: ${money([...state.days.values()].reduce((s, d) => s + d.fees, 0))}. They say thanks.`,
+      maxLev >= 10 ? `Current max leverage: ${maxLev}x. Compliance has been notified.` : `Risk committee status: unbothered`,
+      `Hours of sleep, average: classified`,
+    ];
+    $("memo").innerHTML = items.map(i => `<li>${i}</li>`).join("");
+    $("vault").showModal();
+  }
+  $("vaultClose").onclick = () => $("vault").close();
+
+  // 2. Konami code: make it rain.  3. Type "lano": the CED arrives.
+  const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
+  let kIdx = 0, typed = "";
+  document.addEventListener("keydown", e => {
+    if (e.target.closest("input, textarea")) return;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    kIdx = key === KONAMI[kIdx] ? kIdx + 1 : key === KONAMI[0] ? 1 : 0;
+    if (kIdx === KONAMI.length) { kIdx = 0; makeItRain(); toast("Infinite money glitch unlocked. (It isn't.)"); }
+    if (key.length === 1) {
+      typed = (typed + key).slice(-4);
+      if (typed === "lano") { spinSeal(); toast("The Chief Executive Degen has entered the building."); }
+    }
+  });
+
+  // 4. Double-click the denomination: Lano's net worth in Big Macs.
+  $("denom").ondblclick = () => {
+    if (state.accountValue == null) return;
+    toast(`That's about ${Math.floor(state.accountValue / 6.5).toLocaleString("en-GB")} Big Macs.`);
+  };
+
+  // 5. Today's PnL crosses +$100: one-time celebration per day.
+  function maybeCelebrate() {
+    const today = state.days.get(dayKey(Date.now()))?.net ?? 0, key = "lc-party-" + dayKey(Date.now());
+    let done = false; try { done = localStorage.getItem(key) === "1"; } catch {}
+    if (today >= 100 && !done) {
+      makeItRain(); toast(`${money(today)} today. Lano Capital thanks its investor (Lano).`);
+      try { localStorage.setItem(key, "1"); } catch {}
+    }
+  }
+
+  // 6. For anyone who opens dev tools.
+  console.log("%cLano Capital", "font: 700 28px Georgia, serif; color: #A9853A");
+  console.log("Inspecting the books? Our auditors are Lano and nobody else. Try typing lano, or ↑↑↓↓←→←→BA.");
+
+  // ---------- sync ----------
+  function setSync(status, text) { $("dot").className = "dot " + (status === "busy" ? "busy" : status === "err" ? "err" : ""); $("syncText").textContent = text; }
+  function showBanner(html, info = false) { const b = $("banner"); b.innerHTML = html; b.className = "banner" + (info ? " info" : ""); b.hidden = false; }
+  function hideBanner() { $("banner").hidden = true; }
+
+  let syncing = false;
+  async function sync(full) {
+    if (syncing || DEMO) return;
+    syncing = true; setSync("busy", full ? "Syncing history…" : "Updating…");
+    try {
+      await Promise.all([loadLive(), full ? loadHistory() : null]);
+      aggregate(); render(); hideBanner();
+      state.lastSync = Date.now(); setSync("ok", ""); tick();
+      maybeCelebrate();
+    } catch (e) {
+      setSync("err", "Sync failed");
+      showBanner(`Couldn't load data from Hyperliquid: ${esc(e.message)}. It retries automatically.
+        If this persists and you opened the file straight from your downloads, try hosting it (GitHub Pages or Netlify, both free).`);
+    } finally { syncing = false; }
+  }
+  function tick() {
+    if (!state.lastSync || syncing) return;
+    const s = Math.round((Date.now() - state.lastSync) / 1000);
+    $("syncText").textContent = s < 60 ? `Updated ${s}s ago` : `Updated ${Math.round(s / 60)}m ago`;
+  }
+
+  // ---------- demo data (?demo=1) ----------
+  function loadDemo() {
+    const coins = ["PYTH", "PUMP", "UNI", "ZEC", "BTC", "ETH", "SOL"], now = Date.now(), DAY = 864e5;
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const fills = [], funding = [];
+    for (let d = 75; d >= 0; d--) {
+      if (rnd() < 0.2) continue;
+      for (let i = 0, n = 1 + Math.floor(rnd() * 5); i < n; i++) {
+        const t = now - d * DAY - rnd() * DAY * 0.9, coin = coins[Math.floor(rnd() * coins.length)];
+        const pnl = (rnd() - 0.42) * 90, long = rnd() > 0.4;
+        fills.push({ time: t - 3600e3, coin, side: long ? "B" : "A", dir: long ? "Open Long" : "Open Short", sz: (rnd() * 50).toFixed(1), px: (rnd() * 40 + 1).toFixed(4), fee: (rnd() * 0.6).toFixed(4), closedPnl: "0", tid: fills.length, hash: "o" + fills.length });
+        fills.push({ time: t, coin, side: long ? "A" : "B", dir: long ? "Close Long" : "Close Short", sz: (rnd() * 50).toFixed(1), px: (rnd() * 40 + 1).toFixed(4), fee: (rnd() * 0.6).toFixed(4), closedPnl: pnl.toFixed(2), tid: fills.length, hash: "c" + fills.length });
+      }
+      for (let h = 0; h < 24; h += 8) funding.push({ time: now - d * DAY + h * 3600e3, delta: { coin: "PYTH", usdc: ((rnd() - 0.6) * 0.8).toFixed(4) }, hash: "f" + d + h });
+    }
+    state.fills = fills.filter(f => f.time <= now).sort((a, b) => a.time - b.time);
+    state.funding = funding.filter(f => f.time <= now);
+    state.positions = [
+      { coin: "PYTH", szi: "1520", entryPx: "0.1412", positionValue: "227.70", leverage: { value: 5 }, liquidationPx: "0.1188", unrealizedPnl: "12.84" },
+      { coin: "ZEC", szi: "-0.8", entryPx: "48.21", positionValue: "40.88", leverage: { value: 20 }, liquidationPx: "53.90", unrealizedPnl: "-3.10" },
+    ];
+    state.unrealised = 9.74; state.accountValue = 742.18;
+    aggregate(); render(); setSync("ok", "Demo data");
+    showBanner(`Showing fake demo data. Remove <code>?demo=1</code> from the URL to load real trades.`, true);
+  }
+
+  // ---------- events ----------
+  $("prev").onclick = () => { state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() - 1, 1); renderCalendar(); };
+  $("next").onclick = () => { state.viewMonth = new Date(state.viewMonth.getFullYear(), state.viewMonth.getMonth() + 1, 1); renderCalendar(); };
+  $("grid").onclick = e => {
+    const b = e.target.closest("button.day"); if (!b) return;
+    state.selectedDay = state.selectedDay === b.dataset.k ? null : b.dataset.k;
+    renderCalendar(); renderBreakdown(); renderTrades();
+  };
+  $("clearDay").onclick = () => { state.selectedDay = null; renderCalendar(); renderBreakdown(); renderTrades(); };
+  $("moreTrades").onclick = () => { state.showAllTrades = !state.showAllTrades; renderTrades(); };
+  narrow.addEventListener?.("change", renderCalendar);
+  $("refresh").onclick = () => DEMO ? loadDemo() : sync(true);
+
+  // ---------- boot ----------
+  drawWaves(); drawSeal();
+  if (DEMO) { $("serial").textContent = "LC DEMO00"; $("wallet").textContent = "demo"; loadDemo(); return; }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(ADDRESS)) {
+    render(); setSync("err", "No wallet set");
+    showBanner(ADDRESS
+      ? `<b>${esc(ADDRESS)}</b> isn't a valid wallet address. It should start with 0x followed by 40 characters.`
+      : `No wallet address set. Paste the Hyperliquid address into <code>WALLET</code> at the top of this file, or add <code>?demo=1</code> to preview.`, true);
+    return;
+  }
+  $("serial").textContent = "LC " + ADDRESS.slice(2, 8).toUpperCase();
+  $("wallet").textContent = ADDRESS.slice(0, 6) + "…" + ADDRESS.slice(-4);
+  sync(true);
+  setInterval(() => sync(false), LIVE_REFRESH_MS);
+  setInterval(() => sync(true), FULL_REFRESH_MS);
+  setInterval(() => { tick(); renderGreeting(); }, 5000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) sync(false); });
+})();
+</script>
+</body>
+</html>
